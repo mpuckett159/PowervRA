@@ -1,10 +1,10 @@
 function Get-vRABlueprintVersion {
     <#
         .SYNOPSIS
-        Get a vRA Blueprint's Versions
+        Get a vRA Blueprint's Version objects
     
         .DESCRIPTION
-        Get a vRA Blueprint's Versions
+        Get a vRA Blueprint's Version objects
     
         .PARAMETER Blueprint
         The vRA Blueprint object as returned by Get-vRABlueprint
@@ -14,9 +14,10 @@ function Get-vRABlueprintVersion {
     
         .OUTPUTS
         System.Management.Automation.PSObject
-    
+
         .EXAMPLE
-        Get-vRABlueprint | Get-vRABlueprintVersion
+        $blueprint = Get-vRABlueprint -Id '3492a6e8-r5d4-1293-b6c4-39037ba693f9'
+        Get-vRABlueprintVersion -Blueprint $blueprint
     
         .EXAMPLE
         Get-vRABlueprintVersion -Blueprint (Get-vRABlueprint -Id '3492a6e8-r5d4-1293-b6c4-39037ba693f9')
@@ -29,9 +30,16 @@ function Get-vRABlueprintVersion {
     
         Param (
     
-            [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,ParameterSetName="Blueprint")]
+            [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
             [ValidateNotNullOrEmpty()]
-            [PSCustomObject[]]$Blueprint
+            [PSCustomObject]$Blueprint,
+
+            [Parameter(Mandatory=$false,ParameterSetName='ByVersion')]
+            [ValidateNotNullOrEmpty()]
+            [String[]]$VersionNumber,
+            
+            [Parameter(Mandatory=$false,ParameterSetName='CurrentVersion')]
+            [switch]$CurrentVersion
         )
     
         begin {
@@ -53,6 +61,7 @@ function Get-vRABlueprintVersion {
                     Name = $BlueprintVersion.name
                     Description = $BlueprintVersion.description
                     Version = $BlueprintVersion.version
+                    Content = $BlueprintVersion.content
                     Status = $BlueprintVersion.status
                     VersionDescription = $BlueprintVersion.versionDescription
                     VersionChangeLog = $BlueprintVersion.versionChangeLog
@@ -67,22 +76,40 @@ function Get-vRABlueprintVersion {
     
                 switch ($PsCmdlet.ParameterSetName) {
     
-                    # --- Get BlueprintVersion from Blueprint object
-                    'Blueprint' {
-    
-                        foreach ($Blueprintobj in $Blueprint){
-    
-                            $URI = "$($APIUrl)/$($Blueprintobj.Id)/versions"
+                    # --- Get Blueprint Version Object from Blueprint object and specified version number
+                    'ByVersion' {
+                        foreach ($Version in $VersionNumber){
+                            $URI = "$($APIUrl)/$($Blueprint.Id)/versions/$Version"
                             $Response = Invoke-vRARestMethod -Method GET -URI $URI -Verbose:$VerbosePreference
-                            
-                            foreach($version in $Response.content){
-                                CalculateOutput $version
-                            }
+                            CalculateOutput $Response
                         }
-    
-                        break
+                    }
+
+                    # --- Get most recent Blueprint Version Object from Blueprint Object
+                    'CurrentVersion' {
+                        $URI = "$($APIUrl)/$($Blueprint.Id)/versions"
+                        $ResponseTerse = Invoke-vRARestMethod -Method GET -URI $URI -Verbose:$VerbosePreference
+
+                        # Content is sorted by the API so we can always just select the object in position 0 in the array
+                        $URI = $ResponseTerse.content[0].selfLink
+                        $Response = Invoke-vRARestMethod -Method GET -URI $URI -Verbose:$VerbosePreference
+
+                        CalculateOutput $Response
+                    }
+
+                    # --- Get all Blueprint Version Objects from Blueprint Object
+                    default {
+                        $URI = "$($APIUrl)/$($Blueprint.Id)/versions"
+                        $Response = Invoke-vRARestMethod -Method GET -URI $URI -Verbose:$VerbosePreference
+                        
+                        foreach($Version in $Response.content){
+                            $URI = $Version.selfLink
+                            $Response = Invoke-vRARestMethod -Method GET -URI $URI -Verbose:$VerbosePreference
+                            CalculateOutput $Response
+                        }
                     }
                 }
+                break
             }
             catch [Exception]{
     
